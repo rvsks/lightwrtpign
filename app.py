@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 import requests
 import os
+import sqlite3
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 import threading
@@ -11,12 +12,14 @@ load_dotenv()  # Загружаем переменные окружения из
 app = Flask(__name__)
 
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
+light_check_interval = int(os.getenv('LIGHT_CHECK_INTERVAL', 30))  
+ping_timeout = int(os.getenv('PING_TIMEOUT', 30)) 
 
 # Глобальные переменные для состояния
 last_ping_times = {}
 light_states = {}
 light_durations = {}
-light_check_interval = 10  # Проверка каждые 10 секунд
+light_check_interval = 60  # Проверка каждые 10 секунд
 
 # Функция для отправки сообщения в Telegram
 def send_telegram_message(chat_id, message):
@@ -33,6 +36,10 @@ def update_ping_time(chat_id):
         last_ping_times[chat_id] = now
         light_states[chat_id] = "on"
         light_durations[chat_id] = {'on': timedelta(), 'off': timedelta()}
+
+        # Отправляем статус света новому chat_id
+        send_telegram_message(chat_id, "Welcome! Your light status is currently ON.")
+        print(f"[{now}] New chat_id: {chat_id} - Light ON")
     else:
         last_ping_time = last_ping_times[chat_id]
         duration = now - last_ping_time
@@ -52,14 +59,14 @@ def check_light_state():
     while True:
         now = datetime.now()
         for chat_id, last_time in list(last_ping_times.items()):
-            if (now - last_time).total_seconds() > 10:  # 5 минут
+            if (now - last_time).total_seconds() > ping_timeout:  # Используйте переменную ping_timeout
                 if light_states[chat_id] == "on":
                     duration_on = light_durations[chat_id]['on']
                     light_durations[chat_id]['on'] = timedelta()
                     light_states[chat_id] = "off"
                     send_telegram_message(chat_id, f"Light OFF. Light was ON for {duration_on}")
                     print(f"[{now}] Light OFF for {chat_id}. Light was ON for {duration_on}")
-        time.sleep(light_check_interval)
+        time.sleep(light_check_interval)  # Используйте переменную light_check_interval
 
 @app.route('/ping', methods=['GET', 'POST'])
 def ping():
