@@ -97,4 +97,4 @@ def status():
 
 if __name__ == '__main__':
     threading.Thread(target=check_light_state, daemon=True).start()
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
