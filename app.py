@@ -27,6 +27,11 @@ def get_updates(offset=None):
     response = requests.get(url, params=params)
     return response.json()
 
+@app.route('/', methods=['GET'])
+def index():
+    ip = request.remote_addr  # Получаем IP-адрес клиента
+    return f"Ваш IP-адрес: {ip}"
+
 @app.route('/user_ips', methods=['GET'])
 def view_user_ips():
     return jsonify(user_ips)
@@ -67,4 +72,3 @@ if __name__ == '__main__':
     # Запускаем Flask в отдельном потоке
     threading.Thread(target=app.run, kwargs={'host': '0.0.0.0', 'port': 5000}, daemon=True).start()
     main()
- 
