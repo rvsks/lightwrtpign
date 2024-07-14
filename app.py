@@ -98,5 +98,4 @@ if __name__ == '__main__':
     welcome_chat_id = '558625598'  # Укажите нужный chat_id
     send_telegram_message(welcome_chat_id, "Привет! Бот запущен и готов к работе!")
     
-    app.run(debug=True)
-
+    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)), debug=True)
