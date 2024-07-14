@@ -33,15 +33,13 @@ def view_user_ips():
 
 @app.route('/ping', methods=['GET'])
 def ping():
-    ip = request.args.get('ip')
-    if ip:
-        chat_id = next((chat_id for chat_id, user_ip in user_ips.items() if user_ip == ip), None)
-        if chat_id:
-            send_telegram_message(chat_id, f"Получен ping от IP: {ip}")
-            return "Ping received and message sent.", 200
-        else:
-            return "No chat_id found for this IP.", 404
-    return "IP address is required.", 400
+    ip = request.remote_addr  # Получаем IP-адрес отправителя
+    chat_id = next((chat_id for chat_id, user_ip in user_ips.items() if user_ip == ip), None)
+    if chat_id:
+        send_telegram_message(chat_id, f"Получен ping от IP: {ip}")
+        return "Ping received and message sent.", 200
+    else:
+        return "No chat_id found for this IP.", 404
 
 def main():
     offset = None
