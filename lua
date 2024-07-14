@@ -6,7 +6,7 @@ vi /usr/bin/ping.lua
 Вставьте следующий код:
 
 while true do
-    os.execute("wget -O- 'http://wrtping.glitch.me/ping?chat_id=558625598'")
+    os.execute("wget -O- 'https://wrtping.glitch.me/ping?chat_id=-4200006933'")
     os.execute("sleep 60")
 end
 
@@ -22,6 +22,7 @@ lua /usr/bin/ping.lua &
 
 
 vi /etc/rc.local
+
 Добавьте строку для запуска вашего скрипта перед строкой exit 0. Например:
 
 

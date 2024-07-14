@@ -3,3 +3,5 @@
 123
 /node_modules
 package-lock.json
+server copy.js
+logs.log
