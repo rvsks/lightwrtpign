@@ -3,8 +3,7 @@ import requests
 import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
-import threading
-import time
+from apscheduler.schedulers.background import BackgroundScheduler
 
 load_dotenv()  # Загружаем переменные окружения из .env
 
@@ -16,13 +15,16 @@ TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 last_ping_times = {}
 light_states = {}
 light_durations = {}
-light_check_interval = 10  # Проверка каждые 10 секунд
 
 # Функция для отправки сообщения в Telegram
 def send_telegram_message(chat_id, message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     data = {'chat_id': chat_id, 'text': message}
-    requests.post(url, data=data)
+    try:
+        response = requests.post(url, data=data)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        app.logger.error(f"Ошибка при отправке сообщения в Telegram: {e}")
 
 # Функция для обновления времени последнего пинга
 def update_ping_time(chat_id):
@@ -33,8 +35,6 @@ def update_ping_time(chat_id):
         last_ping_times[chat_id] = now
         light_states[chat_id] = "on"
         light_durations[chat_id] = {'on': timedelta(), 'off': timedelta()}
-        
-        # Отправляем сообщение со статусом света
         send_telegram_message(chat_id, f"Привет! Текущий статус света: {light_states[chat_id]}")
     else:
         last_ping_time = last_ping_times[chat_id]
@@ -48,30 +48,22 @@ def update_ping_time(chat_id):
         light_durations[chat_id]['off'] = timedelta()
         light_states[chat_id] = "on"
         send_telegram_message(chat_id, f"Light ON. Light was OFF for {duration_off}")
-        print(f"[{now}] Light ON for {chat_id}. Light was OFF for {duration_off}")
 
-# Фоновая задача для проверки состояния света
+# Функция для проверки состояния света
 def check_light_state():
-    while True:
-        now = datetime.now()
-        for chat_id, last_time in list(last_ping_times.items()):
-            if (now - last_time).total_seconds() > 10:  # 5 минут
-                if light_states[chat_id] == "on":
-                    duration_on = light_durations[chat_id]['on']
-                    light_durations[chat_id]['on'] = timedelta()
-                    light_states[chat_id] = "off"
-                    send_telegram_message(chat_id, f"Light OFF. Light was ON for {duration_on}")
-                    print(f"[{now}] Light OFF for {chat_id}. Light was ON for {duration_on}")
-        time.sleep(light_check_interval)
+    now = datetime.now()
+    for chat_id, last_time in list(last_ping_times.items()):
+        if (now - last_time).total_seconds() > 10:
+            if light_states[chat_id] == "on":
+                duration_on = light_durations[chat_id]['on']
+                light_durations[chat_id]['on'] = timedelta()
+                light_states[chat_id] = "off"
+                send_telegram_message(chat_id, f"Light OFF. Light was ON for {duration_on}")
 
 @app.route('/ping', methods=['GET', 'POST'])
 def ping():
-    if request.method == 'GET':
-        chat_id = request.args.get('chat_id', 'нет chat_id')
-    else:  # POST
-        chat_id = request.form.get('chat_id', 'нет chat_id')
-    
-    update_ping_time(chat_id)  # Обновляем время последнего пинга
+    chat_id = request.args.get('chat_id') if request.method == 'GET' else request.form.get('chat_id')
+    update_ping_time(chat_id)
     return "Ping received!", 200
 
 @app.route('/status', methods=['GET'])
@@ -92,10 +84,14 @@ def status():
     return jsonify(status_info)
 
 if __name__ == '__main__':
-    threading.Thread(target=check_light_state, daemon=True).start()
-    
-    # Отправляем приветственное сообщение
-    welcome_chat_id = '558625598'  # Укажите нужный chat_id
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(func=check_light_state, trigger="interval", seconds=10)
+    scheduler.start()
+
+    welcome_chat_id = '558625598'
     send_telegram_message(welcome_chat_id, "Привет! Бот запущен и готов к работе!")
     
-    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)), debug=True)
+    try:
+        app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5002)))
+    except (KeyboardInterrupt, SystemExit):
+        scheduler.shutdown()
