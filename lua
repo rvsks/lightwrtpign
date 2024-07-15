@@ -4,7 +4,7 @@ vi /usr/bin/ping.lua
 Вставьте следующий код:
 
 while true do
-    os.execute("wget -O- 'https://wrtping.glitch.me/ping?chat_id=ваш_chatid'")
+    os.execute("wget -O- 'https://wrtping.glitch.me/ping?chat_id=558625598'")
     os.execute("sleep 60")
 end
 
