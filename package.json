@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@supabase/supabase-js": "^2.44.3",
     "axios": "^1.7.2",
     "better-sqlite3": "^11.1.2",
     "dotenv": "^16.4.5",
