@@ -9,9 +9,9 @@ dotenv.config();
 
 const app = express();
 app.use(express.json());
+app.use(express.static('public'));
 
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
-
 const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 
 const logger = winston.createLogger({
@@ -26,37 +26,23 @@ const logger = winston.createLogger({
     ],
 });
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
 function sendTelegramMessage(chatId, message) {
-    bot.sendMessage(chatId, message)
-        .then(() => {
-            logger.info(`Сообщение отправлено: ${message}`);
-        })
-        .catch((error) => {
-            logger.error(`Ошибка отправки сообщения: ${error}`);
-        });
+    return bot.sendMessage(chatId, message)
+        .then(() => logger.info(`Сообщение отправлено: ${message}`))
+        .catch((error) => logger.error(`Ошибка отправки сообщения: ${error}`));
 }
 
 async function saveLightState(chatId, lastPingTime, lightState, lightStartTime, previousDuration) {
-    const formattedLastPingTime = lastPingTime.toISO();  // Преобразуем в ISO формат для сохранения
-    const formattedLightStartTime = lightStartTime.toISO();  // Аналогично
-
-    let formattedPreviousDuration = null;
-    if (previousDuration) {
-        formattedPreviousDuration = previousDuration.toFormat("hh:mm:ss"); // Преобразуем в строку формата hh:mm:ss
-    }
-
     const { error } = await supabase
         .from('light_states')
         .upsert({
             chat_id: chatId,
-            last_ping_time: formattedLastPingTime,
+            last_ping_time: lastPingTime.toISO(),
             light_state: lightState,
-            light_start_time: formattedLightStartTime,
-            previous_duration: formattedPreviousDuration // Храним как текст
+            light_start_time: lightStartTime.toISO(),
+            previous_duration: previousDuration ? previousDuration.toFormat("hh:mm:ss") : null
         });
 
     if (error) {
@@ -83,27 +69,25 @@ async function getLightState(chatId) {
 async function updatePingTime(chatId) {
     const now = DateTime.now();
     logger.info(`Получен пинг от ${chatId}`);
-
+    
     const row = await getLightState(chatId);
     if (!row) {
         await saveLightState(chatId, now, true, now, null);
-        sendTelegramMessage(chatId, `Привет! Свет включен.`);
-    } else {
-        const lastState = row.light_state;  // true/false
-        const lightStartTime = DateTime.fromISO(row.light_start_time);
-        if (!lastState) {  // если свет выключен
-            const previousDuration = now.diff(lightStartTime);
-            await saveLightState(chatId, now, true, now, previousDuration);
-            sendTelegramMessage(chatId, `Свет ВКЛЮЧИЛИ. Был выключен на протяжении ${previousDuration.toFormat('hh:mm:ss')}.`);
-            logger.info(`Свет включен для ${chatId}. Выключен на протяжении ${previousDuration.toFormat('hh:mm:ss')}.`);
-        } else {
-            // Если свет уже включен, просто обновляем время последнего пинга
-            await saveLightState(chatId, now, lastState, lightStartTime, null);
-        }
+        return sendTelegramMessage(chatId, `Привет! Свет включен.`);
+    }
+
+    const lightStartTime = DateTime.fromISO(row.light_start_time);
+    const previousDuration = now.diff(lightStartTime);
+
+    if (row.light_state) {  // Если свет уже включен
+        await saveLightState(chatId, now, true, lightStartTime, null);
+    } else {  // Если свет выключен
+        await saveLightState(chatId, now, true, now, previousDuration);
+        await sendTelegramMessage(chatId, `Свет ВКЛЮЧИЛИ. Был выключен на протяжении ${previousDuration.toFormat('hh:mm:ss')}.`);
     }
 }
 
-const lightCheckInterval = 30000; // Период проверки в милисекундах
+const lightCheckInterval = 30000; // Период проверки в миллисекундах
 
 setInterval(async () => {
     const now = DateTime.now();
@@ -119,14 +103,12 @@ setInterval(async () => {
     for (const row of rows) {
         const chatId = row.chat_id;
         const lastPingTime = DateTime.fromISO(row.last_ping_time);
-        if (now.diff(lastPingTime).as('seconds') > 180) {  // Период проверки в секундах
-            if (row.light_state) {  // если свет включен
-                const lightStartTime = DateTime.fromISO(row.light_start_time);
-                const previousDuration = now.diff(lightStartTime);
-                await saveLightState(chatId, now, false, now, previousDuration);
-                sendTelegramMessage(chatId, `Свет ВЫКЛЮЧИЛИ. Был включен на протяжении ${previousDuration.toFormat('hh:mm:ss')}.`);
-                logger.info(`Свет выключен для ${chatId}. Включен на протяжении ${previousDuration.toFormat('hh:mm:ss')}.`);
-            }
+        
+        if (now.diff(lastPingTime).as('seconds') > 180 && row.light_state) {  // Если свет включен
+            const lightStartTime = DateTime.fromISO(row.light_start_time);
+            const previousDuration = now.diff(lightStartTime);
+            await saveLightState(chatId, now, false, now, previousDuration);
+            await sendTelegramMessage(chatId, `Свет ВЫКЛЮЧИЛИ. Был включен на протяжении ${previousDuration.toFormat('hh:mm:ss')}.`);
         }
     }
 }, lightCheckInterval);
@@ -144,15 +126,12 @@ app.get('/ping', (req, res) => {
 });
 
 bot.onText(/\/status/, async (msg) => {
-    const chatId = msg.chat.id;  
+    const chatId = msg.chat.id;
     logger.info(`Команда /status получена от группы с chat_id ${chatId}`);
 
     const row = await getLightState(chatId);
     if (!row) {
-        const message = `Данных для chat_id ${chatId} не найдено.`;
-        bot.sendMessage(chatId, message);
-        logger.warn(message);
-        return;
+        return bot.sendMessage(chatId, `Данных для chat_id ${chatId} не найдено.`);
     }
 
     const lightState = row.light_state ? 'включен' : 'выключен';
@@ -165,11 +144,7 @@ bot.onText(/\/status/, async (msg) => {
 });
 
 const PORT = process.env.PORT || 5002;
-const server = app.listen(PORT, () => {
-    const address = server.address();
-    const host = address.address === '::' ? 'localhost' : address.address;
-    const port = address.port;
-    const welcomeChatId = '558625598';  // Укажите нужный chat_id
-    sendTelegramMessage(welcomeChatId, `Привет! Бот запущен и готов к работе`);
-    logger.info(`Сервер запущен на адресе http://${host}:${port}`);
+app.listen(PORT, () => {
+    logger.info(`Сервер запущен на порту ${PORT}`);
+    sendTelegramMessage('558625598', `Привет! Бот запущен и готов к работе`);
 });
