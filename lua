@@ -3,10 +3,10 @@
 vi /usr/bin/ping.lua
 
 
-Вставьте следующий код:
+Вставьте следующий код для группы https://t.me/svet_nishinskogo38
 
 while true do
-    os.execute("wget -O- 'https://wrtping.glitch.me/ping?chat_id=-4200006933'")
+    os.execute("wget -O- 'https://wrtping.glitch.me/ping?chat_id=-1002249495073'")
     os.execute("sleep 60")
 end
 
