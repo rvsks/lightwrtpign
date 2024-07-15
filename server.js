@@ -103,7 +103,7 @@ async function updatePingTime(chatId) {
     }
 }
 
-const lightCheckInterval = 30000; // 10 секунд
+const lightCheckInterval = 30000; // Период проверки в милисекундах
 
 setInterval(async () => {
     const now = DateTime.now();
@@ -170,6 +170,6 @@ const server = app.listen(PORT, () => {
     const host = address.address === '::' ? 'localhost' : address.address;
     const port = address.port;
     const welcomeChatId = '558625598';  // Укажите нужный chat_id
-    sendTelegramMessage(welcomeChatId, `Привет! Бот запущен и готов к работе на адресе http://${host}:${port}`);
+    sendTelegramMessage(welcomeChatId, `Привет! Бот запущен и готов к работе`);
     logger.info(`Сервер запущен на адресе http://${host}:${port}`);
 });
