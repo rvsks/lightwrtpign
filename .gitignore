@@ -9,3 +9,6 @@ light_states.db
 lua copy
 lua
 lua
+zap.py
+session_name.session
+server.js

@@ -4,6 +4,7 @@ const { DateTime } = require('luxon');
 const winston = require('winston');
 const TelegramBot = require('node-telegram-bot-api');
 const { createClient } = require('@supabase/supabase-js');
+const { spawn } = require('child_process'); // Для запуска Python скрипта
 
 dotenv.config();
 
@@ -27,6 +28,21 @@ const logger = winston.createLogger({
 });
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+
+// Запуск Python скрипта в отдельном потоке
+const pythonProcess = spawn('python', ['app.py']); // Укажите полный путь к Python, если необходимо
+
+pythonProcess.stdout.on('data', (data) => {
+    logger.info(`Python stdout: ${data}`);
+});
+
+pythonProcess.stderr.on('data', (data) => {
+    logger.error(`Python stderr: ${data}`);
+});
+
+pythonProcess.on('close', (code) => {
+    logger.info(`Python процесс завершён с кодом ${code}`);
+});
 
 function sendTelegramMessage(chatId, message) {
     return bot.sendMessage(chatId, message)
