@@ -1,9 +1,5 @@
-
-session_name.session-journal
-session_name.session
 .env
 /node_modules
 package-lock.json
 server copy.js
-session_file.session
-session_name.session
+app.config
