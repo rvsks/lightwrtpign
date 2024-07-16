@@ -4,7 +4,6 @@ const { DateTime } = require('luxon');
 const winston = require('winston');
 const TelegramBot = require('node-telegram-bot-api');
 const { createClient } = require('@supabase/supabase-js');
-const { spawn } = require('child_process'); // Для запуска Python скрипта
 
 dotenv.config();
 
@@ -28,21 +27,6 @@ const logger = winston.createLogger({
 });
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
-
-// Запуск Python скрипта в отдельном потоке
-const pythonProcess = spawn('python', ['app.py']); // Укажите полный путь к Python, если необходимо
-
-pythonProcess.stdout.on('data', (data) => {
-    logger.info(`Python stdout: ${data}`);
-});
-
-pythonProcess.stderr.on('data', (data) => {
-    logger.error(`Python stderr: ${data}`);
-});
-
-pythonProcess.on('close', (code) => {
-    logger.info(`Python процесс завершён с кодом ${code}`);
-});
 
 function sendTelegramMessage(chatId, message) {
     return bot.sendMessage(chatId, message)
@@ -163,4 +147,47 @@ const PORT = process.env.PORT || 5002;
 app.listen(PORT, () => {
     logger.info(`Сервер запущен на порту ${PORT}`);
     sendTelegramMessage('558625598', `Привет! Бот запущен и готов к работе`);
+});
+const axios = require('axios'); // Добавьте это
+
+// Функция для выполнения cURL запроса
+async function sendCurlRequest() {
+    try {
+        await axios.post('https://lightwrtpign.onrender.com/dtek');
+        logger.info(`Запрос отправлен на https://lightwrtpign.onrender.com/dtek`);
+    } catch (error) {
+        logger.error(`Ошибка при отправке запроса: ${error.message}`);
+    }
+}
+
+// Измените функцию updatePingTime
+async function updatePingTime(chatId) {
+    const now = DateTime.now();
+    logger.info(`Получен пинг от ${chatId}`);
+
+    await sendCurlRequest(); // Отправляем запрос при получении пинга
+
+    const row = await getLightState(chatId);
+    if (!row) {
+        await saveLightState(chatId, now, true, now, null);
+        return sendTelegramMessage(chatId, `Привет! Свет включен.`);
+    }
+
+    const lightStartTime = DateTime.fromISO(row.light_start_time);
+    const previousDuration = now.diff(lightStartTime);
+
+    if (row.light_state) {  // Если свет уже включен
+        await saveLightState(chatId, now, true, lightStartTime, null);
+    } else {  // Если свет выключен
+        await saveLightState(chatId, now, true, now, previousDuration);
+        await sendTelegramMessage(chatId, `Свет ВКЛЮЧИЛИ. Был выключен на протяжении ${previousDuration.toFormat('hh:mm:ss')}.`);
+    }
+}
+
+// Измените обработчик для любого текстового сообщения
+bot.on('message', async (msg) => {
+    const chatId = msg.chat.id;
+    logger.info(`Получено сообщение от ${chatId}: ${msg.text}`);
+    
+    await sendCurlRequest(); // Отправляем запрос при получении сообщения
 });
