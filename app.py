@@ -105,8 +105,10 @@ async def handle_dtek_command(client, event):
             response_text = response_message.text
             logging.info(f"Ответ от бота: {response_text}")
 
+            # Ожидание после получения ответа
+            await asyncio.sleep(2)
+
             if "Оберіть потрібний розділ, натиснувши кнопку нижче👇" in response_text:
-                await asyncio.sleep(0.5)
                 await client.delete_messages(bot_target, response_message.id)
                 logging.info("Сообщение 'Оберіть потрібний розділ, натиснувши кнопку нижче👇' удалено.")
 
@@ -117,10 +119,13 @@ async def handle_dtek_command(client, event):
                     response_text = response_message.text
                     logging.info(f"Ответ от бота: {response_text}")
 
+                    # Ожидание после получения ответа
+                    await asyncio.sleep(2)
+
                     if "Петра Ніщинського" in response_text:
                         send_message_to_group(bot_token, group_id, response_text)
                         logging.info("Ответ от бота с 'Петра Ніщинського' отправлен в группу.")
-                        await asyncio.sleep(0.5)
+                        
                         await client.delete_messages(bot_target, response_message.id)
                         logging.info(f"Ответ от бота с ID {response_message.id} удалён.")
                         break
@@ -128,7 +133,7 @@ async def handle_dtek_command(client, event):
                     elif "Повідомити про відсутність світла" in response_text:
                         send_message_to_group(bot_token, group_id, response_text)
                         logging.info("Сообщение 'Повідомити про відсутність світла' отправлено в группу.")
-                        await asyncio.sleep(0.5)
+                        
                         await client.delete_messages(bot_target, response_message.id)
                         logging.info(f"Ответ от бота с ID {response_message.id} удалён.")
                         break
