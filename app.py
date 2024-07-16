@@ -57,83 +57,90 @@ def send_message_to_group(token, chat_id, text):
 
 last_dtek_request_time = 0  # Время последнего запроса /dtek
 
-async def process_event(client):
+async def handle_dtek_command(client):
     global is_processing, last_dtek_request_time
 
+    current_time = time.time()
+
+    if is_processing:
+        logging.info("Запрос к /dtek проигнорирован, так как он уже обрабатывается.")
+        return
+    
+    if current_time - last_dtek_request_time < 30:
+        logging.info("Запрос к /dtek проигнорирован, так как он поступает слишком быстро.")
+        return
+
+    last_dtek_request_time = current_time  # Обновляем время последнего запроса
+    is_processing = True
+    logging.info("Команда '/dtek' получена.")
+    
+    await message_queue.put("☰ Меню")
+    attempts = 0
+
+    try:
+        while True:
+            response_message = await wait_for_bot_response(client)
+            response_text = response_message.text
+            logging.info(f"Ответ от бота: {response_text}")
+
+            if "Оберіть потрібний розділ, натиснувши кнопку нижче👇" in response_text:
+                await client.delete_messages(bot_target, response_message.id)
+                logging.info("Сообщение 'Оберіть потрібний розділ, натиснувши кнопку нижче👇' удалено.")
+
+                await message_queue.put("💡Можливі відключення")
+
+                while True:
+                    response_message = await wait_for_bot_response(client)
+                    response_text = response_message.text
+                    logging.info(f"Ответ от бота: {response_text}")
+
+                    if "Петра Ніщинського" in response_text:
+                        send_message_to_group(bot_token, group_id, response_text)
+                        logging.info("Ответ от бота с 'Петра Ніщинського' отправлен в группу.")
+                        await asyncio.sleep(0.5)
+                        await client.delete_messages(bot_target, response_message.id)
+                        logging.info(f"Ответ от бота с ID {response_message.id} удалён.")
+                        break
+                    
+                    elif "Повідомити про відсутність світла" in response_text:
+                        send_message_to_group(bot_token, group_id, response_text)
+                        logging.info("Сообщение 'Повідомити про відсутність світла' отправлено в группу.")
+                        await asyncio.sleep(0.5)
+                        await client.delete_messages(bot_target, response_message.id)
+                        logging.info(f"Ответ от бота с ID {response_message.id} удалён.")
+                        break
+                    
+                    else:
+                        attempts += 1
+                        logging.info("Ответ не содержит нужные фразы, проверяем снова.")
+                        if attempts >= 5:
+                            logging.info("Достигнуто максимальное количество попыток, завершение обработки.")
+                            break
+                        await asyncio.sleep(2)
+                break
+            else:
+                attempts += 1
+                logging.info("Ответ не содержит нужную фразу, проверяем снова.")
+                if attempts >= 5:
+                    logging.info("Достигнуто максимальное количество попыток, завершение обработки.")
+                    break
+                await asyncio.sleep(2)
+
+    finally:
+        is_processing = False
+
+async def process_event(client):
     @client.on(events.NewMessage(chats=group_id, pattern='/dtek'))
     async def handler(event):
-        global is_processing, last_dtek_request_time
+        await handle_dtek_command(client)
+        await event.delete()  # Удаляем сообщение
 
-        current_time = time.time()
-        
-        if is_processing:
-            logging.info("Запрос к /dtek проигнорирован, так как он уже обрабатывается.")
+    @client.on(events.NewMessage(chats=group_id))
+    async def message_handler(event):
+        if "Свет ВЫКЛЮЧИЛИ" in event.raw_text:
+            logging.info("Сообщение 'Свет ВЫКЛЮЧИЛИ' получено, отправляем команду /dtek.")
+            await handle_dtek_command(client)
             await event.delete()  # Удаляем сообщение
-            return
-        
-        if current_time - last_dtek_request_time < 30:
-            logging.info("Запрос к /dtek проигнорирован, так как он поступает слишком быстро.")
-            await event.delete()  # Удаляем сообщение
-            return
-
-        last_dtek_request_time = current_time  # Обновляем время последнего запроса
-        is_processing = True
-        logging.info("Команда '/dtek' получена.")
-        
-        await message_queue.put("☰ Меню")
-        attempts = 0
-
-        try:
-            while True:
-                response_message = await wait_for_bot_response(client)
-                response_text = response_message.text
-                logging.info(f"Ответ от бота: {response_text}")
-
-                if "Оберіть потрібний розділ, натиснувши кнопку нижче👇" in response_text:
-                    await client.delete_messages(bot_target, response_message.id)
-                    logging.info("Сообщение 'Оберіть потрібний розділ, натиснувши кнопку нижче👇' удалено.")
-
-                    await message_queue.put("💡Можливі відключення")
-
-                    while True:
-                        response_message = await wait_for_bot_response(client)
-                        response_text = response_message.text
-                        logging.info(f"Ответ от бота: {response_text}")
-
-                        if "Петра Ніщинського" in response_text:
-                            send_message_to_group(bot_token, group_id, response_text)
-                            logging.info("Ответ от бота с 'Петра Ніщинського' отправлен в группу.")
-                            await asyncio.sleep(0.5)
-                            await client.delete_messages(bot_target, response_message.id)
-                            logging.info(f"Ответ от бота с ID {response_message.id} удалён.")
-                            break
-                        
-                        elif "Повідомити про відсутність світла" in response_text:
-                            send_message_to_group(bot_token, group_id, response_text)
-                            logging.info("Сообщение 'Повідомити про відсутність світла' отправлено в группу.")
-                            await asyncio.sleep(0.5)
-                            await client.delete_messages(bot_target, response_message.id)
-                            logging.info(f"Ответ от бота с ID {response_message.id} удалён.")
-                            break
-                        
-                        else:
-                            attempts += 1
-                            logging.info("Ответ не содержит нужные фразы, проверяем снова.")
-                            if attempts >= 5:
-                                logging.info("Достигнуто максимальное количество попыток, завершение обработки.")
-                                break
-                            await asyncio.sleep(2)
-                    break
-                else:
-                    attempts += 1
-                    logging.info("Ответ не содержит нужную фразу, проверяем снова.")
-                    if attempts >= 5:
-                        logging.info("Достигнуто максимальное количество попыток, завершение обработки.")
-                        break
-                    await asyncio.sleep(2)
-
-        finally:
-            is_processing = False
 
 async def process_queue(client):
     while True:
