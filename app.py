@@ -4,6 +4,7 @@ import sys
 import io
 from dotenv import load_dotenv
 from telethon import TelegramClient, events
+from telethon.sessions import StringSession
 from flask import Flask, request, jsonify
 import logging
 import threading
@@ -21,6 +22,7 @@ phone = os.getenv('PHONE_NUMBER')
 group_id = int(os.getenv('GROUP_ID'))
 bot_token = os.getenv('TELEGRAM_TOKEN')
 bot_target = 'DTEKOdeskiElektromerezhiBot'
+string_session = os.getenv('STRING_SESSION')
 
 app = Flask(__name__)
 message_queue = asyncio.Queue()
@@ -154,7 +156,7 @@ async def process_queue(client):
         message_queue.task_done()
 
 async def main():
-    async with TelegramClient('session_file', api_id, api_hash) as client:
+    async with TelegramClient(StringSession(string_session), api_id, api_hash) as client:
         asyncio.create_task(process_queue(client))
         await process_event(client)
         logging.info("Слушаем новые сообщения в группе...")
