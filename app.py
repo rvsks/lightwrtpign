@@ -103,7 +103,7 @@ async def process_event(client):
                         if "Петра Ніщинського" in response_text:
                             send_message_to_group(bot_token, group_id, response_text)
                             logging.info("Ответ от бота с 'Петра Ніщинського' отправлен в группу.")
-                            
+                            await asyncio.sleep(0.5)
                             await client.delete_messages(bot_target, response_message.id)
                             logging.info(f"Ответ от бота с ID {response_message.id} удалён.")
                             break
@@ -111,7 +111,7 @@ async def process_event(client):
                         elif "Повідомити про відсутність світла" in response_text:
                             send_message_to_group(bot_token, group_id, response_text)
                             logging.info("Сообщение 'Повідомити про відсутність світла' отправлено в группу.")
-                            
+                            await asyncio.sleep(0.5)
                             await client.delete_messages(bot_target, response_message.id)
                             logging.info(f"Ответ от бота с ID {response_message.id} удалён.")
                             break
