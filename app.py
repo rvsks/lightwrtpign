@@ -166,4 +166,6 @@ def ping():
     return jsonify({"status": "received", "message": "Команда '/dtek' успешно обработана."}), 200
 
 if __name__ == '__main__':
+    # Запускаем прослушивание событий сразу при старте сервера
+    asyncio.run(main())
     app.run(host='0.0.0.0', port=int(os.getenv("PORT", 5000)))
