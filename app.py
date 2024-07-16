@@ -177,8 +177,8 @@ def ping():
 
     last_request_time = current_time
 
-    # Запускаем обработку Telegram команд
-    loop.create_task(main())
+    # Помещаем команду в очередь сообщений
+    loop.create_task(message_queue.put("💡Можливі відключення"))
 
     logging.info("Команда '/dtek' получена.")
     return jsonify({"status": "received", "message": "Команда '/dtek' успешно обработана."}), 200
