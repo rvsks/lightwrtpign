@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from telethon import TelegramClient, events
 from flask import Flask, request, jsonify
 import logging
-from threading import Thread
+import threading
 import time
 import requests
 
@@ -26,6 +26,8 @@ app = Flask(__name__)
 message_queue = asyncio.Queue()
 last_request_time = 0
 is_processing = False  # Флаг обработки
+
+loop = asyncio.get_event_loop()
 
 async def send_message(client, message):
     try:
@@ -158,6 +160,10 @@ async def main():
         logging.info("Слушаем новые сообщения в группе...")
         await client.run_until_disconnected()
 
+def start_telegram_client():
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(main())
+
 @app.route('/dtek', methods=['POST'])
 def ping():
     global last_request_time
@@ -169,18 +175,16 @@ def ping():
 
     last_request_time = current_time
 
-    # Запускаем прослушивание Telegram в отдельном потоке
-    if not is_processing:
-        thread = Thread(target=lambda: asyncio.run(main()))
-        thread.start()
+    # Запускаем обработку Telegram команд
+    loop.create_task(main())
 
     logging.info("Команда '/dtek' получена.")
     return jsonify({"status": "received", "message": "Команда '/dtek' успешно обработана."}), 200
 
 if __name__ == '__main__':
-    # Запускаем прослушивание Telegram в отдельном потоке
-    thread = Thread(target=lambda: asyncio.run(main()))
-    thread.start()
-
+    # Запускаем клиент Telegram в отдельном потоке
+    telegram_thread = threading.Thread(target=start_telegram_client)
+    telegram_thread.start()
+    
     # Запускаем Flask сервер
     app.run(host='0.0.0.0', port=int(os.getenv("PORT", 5000)))
