@@ -8,6 +8,7 @@ from flask import Flask, request, jsonify
 import logging
 from threading import Thread
 import time
+import requests
 
 logging.basicConfig(level=logging.INFO)
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
@@ -18,6 +19,7 @@ api_id = int(os.getenv('API_ID'))
 api_hash = os.getenv('API_HASH')
 phone = os.getenv('PHONE_NUMBER')
 group_id = int(os.getenv('GROUP_ID'))
+bot_token = os.getenv('TELEGRAM_TOKEN')
 bot_target = 'DTEKOdeskiElektromerezhiBot'
 
 app = Flask(__name__)
@@ -43,6 +45,15 @@ async def wait_for_bot_response(client):
         if message and message[0].text:
             return message[0]
         await asyncio.sleep(1)
+
+def send_message_to_group(token, chat_id, text):
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = {
+        'chat_id': chat_id,
+        'text': text
+    }
+    response = requests.post(url, json=payload)
+    return response.json()
 
 last_dtek_request_time = 0  # Время последнего запроса /dtek
 
@@ -90,7 +101,7 @@ async def process_event(client):
                         logging.info(f"Ответ от бота: {response_text}")
 
                         if "Петра Ніщинського" in response_text:
-                            await client.send_message(group_id, response_text)
+                            send_message_to_group(bot_token, group_id, response_text)
                             logging.info("Ответ от бота с 'Петра Ніщинського' отправлен в группу.")
                             
                             await client.delete_messages(bot_target, response_message.id)
@@ -98,7 +109,7 @@ async def process_event(client):
                             break
                         
                         elif "Повідомити про відсутність світла" in response_text:
-                            await client.send_message(group_id, response_text)
+                            send_message_to_group(bot_token, group_id, response_text)
                             logging.info("Сообщение 'Повідомити про відсутність світла' отправлено в группу.")
                             
                             await client.delete_messages(bot_target, response_message.id)
