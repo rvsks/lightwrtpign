@@ -7,21 +7,22 @@ from telethon import TelegramClient, events
 from flask import Flask, request, jsonify
 import logging
 from threading import Thread
+from time import time
 
 logging.basicConfig(level=logging.INFO)
-# Устанавливаем кодировку для вывода в консоль
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
-# Загружаем переменные окружения из файла .env
 load_dotenv()
 
 api_id = int(os.getenv('API_ID'))
 api_hash = os.getenv('API_HASH')
 phone = os.getenv('PHONE_NUMBER')
 group_id = int(os.getenv('GROUP_ID'))
-bot_target = 'DTEKOdeskiElektromerezhiBot'  # Имя бота
+bot_target = 'DTEKOdeskiElektromerezhiBot'
 
 app = Flask(__name__)
+message_queue = asyncio.Queue()
+last_dtek_time = 0  # Время последнего запроса '/dtek'
 
 async def send_message(client, message):
     try:
@@ -30,7 +31,7 @@ async def send_message(client, message):
         await asyncio.sleep(2)  # Пауза 2 секунды
         return sent_message.id
     except Exception as e:
-        logging.info(f"Ошибка при отправке сообщения: {e}")
+        logging.error(f"Ошибка при отправке сообщения: {e}")
         return None
 
 async def wait_for_bot_response(client):
@@ -38,20 +39,22 @@ async def wait_for_bot_response(client):
         message = await client.get_messages(bot_target, limit=1)
         if message and message[0].text:
             return message[0]
-        await asyncio.sleep(1)  # Ожидание 1 секунда
+        await asyncio.sleep(1)
 
 async def process_event(client):
+    global last_dtek_time
     @client.on(events.NewMessage(chats=group_id, pattern='/dtek'))
     async def handler(event):
+        current_time = time()
+        if current_time - last_dtek_time < 60:  # Проверка на интервал в 60 секунд
+            logging.info("Команда '/dtek' игнорирована (частота больше 1 минуты).")
+            return
+        
+        last_dtek_time = current_time  # Обновляем время последнего запроса
         logging.info("Команда '/dtek' получена.")
         
-        # Отправляем "☰ Меню"
-        sent_menu_message_id = await send_message(client, "☰ Меню")
-        if sent_menu_message_id is not None:
-            await client.delete_messages(bot_target, sent_menu_message_id)
-            logging.info(f"Сообщение '☰ Меню' с ID {sent_menu_message_id} удалено.")
+        await message_queue.put("☰ Меню")
 
-        # Ждем ответа от бота
         while True:
             response_message = await wait_for_bot_response(client)
             response_text = response_message.text
@@ -61,13 +64,8 @@ async def process_event(client):
                 await client.delete_messages(bot_target, response_message.id)
                 logging.info("Сообщение 'Оберіть потрібний розділ, натиснувши кнопку нижче👇' удалено.")
 
-                # Отправляем "💡Можливі відключення"
-                sent_vydkl_message_id = await send_message(client, "💡Можливі відключення")
-                if sent_vydkl_message_id is not None:
-                    await client.delete_messages(bot_target, sent_vydkl_message_id)
-                    logging.info(f"Сообщение '💡Можливі відключення' с ID {sent_vydkl_message_id} удалено.")
+                await message_queue.put("💡Можливі відключення")
 
-                # Ждем ответа от бота после отправки "💡Можливі відключення"
                 while True:
                     response_message = await wait_for_bot_response(client)
                     response_text = response_message.text
@@ -93,18 +91,31 @@ async def process_event(client):
             else:
                 logging.info("Ответ не содержит нужную фразу, проверяем снова.")
 
+async def process_queue(client):
+    while True:
+        message = await message_queue.get()
+        await send_message(client, message)
+        message_queue.task_done()
+
 async def main():
     async with TelegramClient('session_name', api_id, api_hash) as client:
+        asyncio.create_task(process_queue(client))
         await process_event(client)
         logging.info("Слушаем новые сообщения в группе...")
         await client.run_until_disconnected()
 
 @app.route('/dtek', methods=['POST'])
 def ping():
+    global last_dtek_time
+    current_time = time()
+    if current_time - last_dtek_time < 60:  # Проверка на интервал в 60 секунд
+        logging.info("Команда '/dtek' игнорирована (частота больше 1 минуты).")
+        return jsonify({"status": "ignored", "message": "Команда '/dtek' игнорирована."}), 429  # 429 Too Many Requests
+    
+    last_dtek_time = current_time  # Обновляем время последнего запроса
     thread = Thread(target=lambda: asyncio.run(main()))
     thread.start()
 
-    # Ответ при успешном выполнении
     logging.info("Команда '/dtek' получена.")
     return jsonify({"status": "received", "message": "Команда '/dtek' успешно обработана."}), 200
 
