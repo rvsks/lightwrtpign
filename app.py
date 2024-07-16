@@ -73,9 +73,13 @@ async def process_event(client):
     @client.on(events.NewMessage(chats=group_id))
     async def monitor_handler(event):
         message_text = event.message.message.lower()
+        logging.info(f"Получено сообщение: {message_text}")
+        
         if "свет выключили" in message_text:
             logging.info("Получено сообщение 'свет выключили'.")
             await handle_dtek_command(client, event)
+        else:
+            logging.info("Сообщение не содержит триггерной фразы.")
 
 async def handle_dtek_command(client, event):
     global is_processing, last_dtek_request_time
