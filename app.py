@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from telethon import TelegramClient, events
 from flask import Flask, request, jsonify
 import logging
+from threading import Thread
 
 logging.basicConfig(level=logging.INFO)
 # Устанавливаем кодировку для вывода в консоль
@@ -100,10 +101,9 @@ async def main():
 
 @app.route('/dtek', methods=['POST'])
 def ping():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(main())
-    
+    thread = Thread(target=lambda: asyncio.run(main()))
+    thread.start()
+
     # Ответ при успешном выполнении
     logging.info("Команда '/dtek' получена.")
     return jsonify({"status": "received", "message": "Команда '/dtek' успешно обработана."}), 200

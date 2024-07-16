@@ -2,3 +2,6 @@
 session_name.session-journal
 session_name.session
 .env
+/node_modules
+package-lock.json
+server copy.js
