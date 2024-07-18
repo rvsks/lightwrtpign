@@ -1,9 +1,9 @@
-const express = require('express');
-const dotenv = require('dotenv');
-const { DateTime } = require('luxon');
-const winston = require('winston');
-const TelegramBot = require('node-telegram-bot-api');
-const { createClient } = require('@supabase/supabase-js');
+import express from 'express';
+import { DateTime } from 'luxon';
+import winston from 'winston';
+import TelegramBot from 'node-telegram-bot-api';
+import { createClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
 
 dotenv.config();
 
@@ -26,23 +26,40 @@ const logger = winston.createLogger({
     ],
 });
 
+export async function getProfileLink(chatId) {
+    const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/getChat?chat_id=${chatId}`;
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
+        if (data.ok) {
+            const user = data.result;
+            return user.username ? `https://t.me/${user.username}` : null;
+        } else {
+            throw new Error(data.description);
+        }
+    } catch (error) {
+        throw new Error(error.message);
+    }
+}
+
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
-function sendTelegramMessage(chatId, message) {
+async function sendTelegramMessage(chatId, message) {
     return bot.sendMessage(chatId, message)
         .then(() => logger.info(`Сообщение отправлено: ${message}`))
         .catch((error) => logger.error(`Ошибка отправки сообщения: ${error}`));
 }
 
-async function saveLightState(chatId, lastPingTime, lightState, lightStartTime, previousDuration) {
+async function saveLightState(chatId, lastPingTime, lightState, lightStartTime, previousDuration, profileUrl) {
     const { error } = await supabase
         .from('light_states')
         .upsert({
             chat_id: chatId,
-            last_ping_time: lastPingTime.toISO(),
+            last_ping_time: lastPingTime ? lastPingTime.toISO() : null,
             light_state: lightState,
-            light_start_time: lightStartTime.toISO(),
-            previous_duration: previousDuration ? previousDuration.toFormat("hh:mm:ss") : null
+            light_start_time: lightStartTime ? lightStartTime.toISO() : null,
+            previous_duration: previousDuration ? previousDuration.toFormat("hh:mm:ss") : null,
+            profile_url: profileUrl
         });
 
     if (error) {
@@ -72,7 +89,8 @@ async function updatePingTime(chatId) {
 
     const row = await getLightState(chatId);
     if (!row) {
-        await saveLightState(chatId, now, true, now, null);
+        const profileLink = await getProfileLink(chatId);
+        await saveLightState(chatId, now, true, now, null, profileLink);
         return sendTelegramMessage(chatId, `Привет! Свет включен.`);
     }
 
@@ -123,6 +141,18 @@ app.get('/ping', (req, res) => {
     const chatId = req.query.chat_id || 'нет chat_id';
     updatePingTime(chatId);
     res.send("Ping received!");
+});
+
+// Обработка текстовых сообщений
+bot.on('message', async (msg) => {
+    const chatId = msg.chat.id;
+
+    const row = await getLightState(chatId);
+    if (!row) {
+        const profileLink = await getProfileLink(chatId); // Получаем ссылку на профиль
+        await saveLightState(chatId, null, null, null, null, profileLink); // Сохраняем только профиль
+        sendTelegramMessage(chatId, `Привет! Ваш профиль: ${profileLink}`);
+    }
 });
 
 bot.onText(/\/status/, async (msg) => {
