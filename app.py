@@ -5,7 +5,7 @@ import io
 from dotenv import load_dotenv
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
-from flask import Flask, request, jsonify
+from flask import Flask
 import logging
 import threading
 import time
@@ -18,8 +18,6 @@ load_dotenv()
 
 api_id = int(os.getenv('API_ID'))
 api_hash = os.getenv('API_HASH')
-phone = os.getenv('PHONE_NUMBER')
-group_id = int(os.getenv('GROUP_ID'))
 bot_token = os.getenv('TELEGRAM_TOKEN')
 bot_target = 'DTEKOdeskiElektromerezhiBot'
 string_session = os.getenv('STRING_SESSION')
@@ -28,6 +26,8 @@ app = Flask(__name__)
 message_queue = asyncio.Queue()
 last_request_time = 0
 is_processing = False  # Флаг обработки
+interaction_active = False  # Флаг активного взаимодействия
+current_group_id = None  # Текущий идентификатор группы
 
 loop = asyncio.get_event_loop()
 
@@ -64,13 +64,15 @@ def send_message_to_group(token, chat_id, text):
 last_dtek_request_time = 0  # Время последнего запроса /dtek
 
 async def process_event(client):
-    global is_processing, last_dtek_request_time
+    global is_processing, last_dtek_request_time, interaction_active, current_group_id
 
-    @client.on(events.NewMessage(chats=group_id, pattern='/dtek'))
+    @client.on(events.NewMessage(pattern='/dtek'))
     async def handler(event):
+        global current_group_id
+        current_group_id = event.chat_id  # Сохраняем текущий идентификатор группы
         await handle_dtek_command(client, event)
 
-    @client.on(events.NewMessage(chats=group_id))
+    @client.on(events.NewMessage())
     async def monitor_handler(event):
         message_text = event.message.message.lower()
         logging.info(f"Получено сообщение: {message_text}")
@@ -81,8 +83,14 @@ async def process_event(client):
         else:
             logging.info("Сообщение не содержит триггерной фразы.")
 
+    @client.on(events.NewMessage(chats=bot_target))
+    async def bot_message_handler(event):
+        if not interaction_active:
+            logging.info(f"Неактивное сообщение от бота удалено: {event.message.text}")
+            await client.delete_messages(bot_target, event.message.id)
+
 async def handle_dtek_command(client, event):
-    global is_processing, last_dtek_request_time
+    global is_processing, last_dtek_request_time, interaction_active, current_group_id
 
     current_time = time.time()
 
@@ -98,6 +106,7 @@ async def handle_dtek_command(client, event):
 
     last_dtek_request_time = current_time  # Обновляем время последнего запроса
     is_processing = True
+    interaction_active = True
     logging.info("Команда '/dtek' получена.")
     
     await message_queue.put("☰ Меню")
@@ -127,7 +136,7 @@ async def handle_dtek_command(client, event):
                     await asyncio.sleep(2)
 
                     if "Петра Ніщинського" in response_text:
-                        send_message_to_group(bot_token, group_id, response_text)
+                        send_message_to_group(bot_token, current_group_id, response_text)
                         logging.info("Ответ от бота с 'Петра Ніщинського' отправлен в группу.")
                         
                         await client.delete_messages(bot_target, response_message.id)
@@ -135,8 +144,8 @@ async def handle_dtek_command(client, event):
                         break
                     
                     elif "Повідомити про відсутність світла" in response_text:
-                        send_message_to_group(bot_token, group_id, response_text)
-                        logging.info("Сообщение 'Повідомити про відсутність світла' отправлено в группу.")
+                        send_message_to_group(bot_token, current_group_id, "Сейчас не зафиксировано отключений")
+                        logging.info("Сообщение 'Сейчас не зафиксировано отключений' отправлено в группу.")
                         
                         await client.delete_messages(bot_target, response_message.id)
                         logging.info(f"Ответ от бота с ID {response_message.id} удалён.")
@@ -160,6 +169,7 @@ async def handle_dtek_command(client, event):
 
     finally:
         is_processing = False
+        interaction_active = False
 
 async def process_queue(client):
     while True:
@@ -168,32 +178,16 @@ async def process_queue(client):
         message_queue.task_done()
 
 async def main():
-    async with TelegramClient(StringSession(string_session), api_id, api_hash) as client:
-        asyncio.create_task(process_queue(client))
-        await process_event(client)
-        logging.info("Слушаем новые сообщения в группе...")
-        await client.run_until_disconnected()
+    client = TelegramClient(StringSession(string_session), api_id, api_hash)
+    await client.start(bot_token=bot_token)
+    asyncio.create_task(process_queue(client))
+    await process_event(client)
+    logging.info("Слушаем новые сообщения в группе...")
+    await client.run_until_disconnected()
 
 def start_telegram_client():
     asyncio.set_event_loop(loop)
     loop.run_until_complete(main())
-
-@app.route('/dtek', methods=['POST'])
-def ping():
-    global last_request_time
-    current_time = time.time()
-
-    if current_time - last_request_time < 60:
-        logging.info("Запрос к /dtek проигнорирован, так как он поступает слишком часто.")
-        return jsonify({"status": "ignored", "message": "Запрос к /dtek проигнорирован, так как он поступает слишком часто."}), 429
-
-    last_request_time = current_time
-
-    # Помещаем команду в очередь сообщений
-    loop.create_task(message_queue.put("💡Можливі відключення"))
-
-    logging.info("Команда '/dtek' получена.")
-    return jsonify({"status": "received", "message": "Команда '/dtek' успешно обработана."}), 200
 
 if __name__ == '__main__':
     # Запускаем клиент Telegram в отдельном потоке
