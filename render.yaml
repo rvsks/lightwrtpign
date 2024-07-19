@@ -1,0 +1,9 @@
+services:
+  - type: worker
+    name: Telegram Bot Worker
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: TELEGRAM_TOKEN
+        value: ${TELEGRAM_TOKEN}
