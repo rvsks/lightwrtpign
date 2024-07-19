@@ -1,28 +1,28 @@
-import asyncio
-from dotenv import load_dotenv
 import os
-from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+import asyncio
+from playwright.async_api import async_playwright
+from dotenv import load_dotenv
 
-# Загрузка переменных окружения из файла .env
+# Загрузка переменных окружения
 load_dotenv()
+
+# Получение токена из переменной окружения
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 
+# Инициализация состояния разговора
 conversation_state = {}
 
 async def wait_for_element(page, selector, timeout=60000):
     try:
         await page.wait_for_selector(selector, timeout=timeout)
         return True
-    except PlaywrightTimeoutError:
+    except TimeoutError:
         print(f"Элемент {selector} не появился вовремя.")
         return False
 
 async def interact_with_autocomplete(page, query, input_selector, autocomplete_selector, min_length=3):
-    if len(query) < min_length:
-        return None
-    
     await page.fill(input_selector, query)
     
     if not await wait_for_element(page, autocomplete_selector, timeout=5000):
@@ -32,23 +32,19 @@ async def interact_with_autocomplete(page, query, input_selector, autocomplete_s
         () => {{
             const items = document.querySelectorAll('{autocomplete_selector} div');
             return Array.from(items).map(item => {{
-                const input = item.querySelector('input[type="hidden"]');
                 return {{
                     text: item.textContent,
-                    value: input ? input.value : null
+                    value: item.querySelector('input[type="hidden"]').value
                 }};
             }});
         }}
     """)
     
-    if suggestions:
-        if len(suggestions) == 1:
-            # Если есть только одна подсказка, выбираем ее автоматически
-            await page.click(f"{autocomplete_selector} div")
-            return [suggestions[0]]
-        return suggestions
+    if suggestions and len(suggestions) == 1:
+        await page.click(f"{autocomplete_selector} div")
+        return [suggestions[0]]
     
-    return None
+    return suggestions if suggestions else None
 
 async def get_outage_info(page):
     if await wait_for_element(page, '#showCurOutage'):
@@ -65,9 +61,8 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
     conversation_state[user_id] = {"step": "city"}
     
-    # Инициализация браузера и страницы
     p = await async_playwright().start()
-    browser = await p.chromium.launch(headless=True)  # Запуск браузера в фоновом режиме
+    browser = await p.chromium.launch()
     page = await browser.new_page()
     
     url = "https://www.dtek-oem.com.ua/ua/shutdowns"
@@ -101,24 +96,24 @@ async def process_city(update: Update, context: ContextTypes.DEFAULT_TYPE, city_
     state = conversation_state[user_id]
     page = state["page"]
 
+    if len(city_query) < 3:
+        await update.message.reply_text("Введите не менее 3 символов для названия города.")
+        return
+
     suggestions = await interact_with_autocomplete(page, city_query, 'input#city', '#cityautocomplete-list', min_length=3)
 
     if not suggestions:
-        if len(city_query) >= 3:
-            await update.message.reply_text("Город не найден. Попробуйте еще раз.")
-        else:
-            await update.message.reply_text("Введите не менее 3 символов для поиска города.")
+        await update.message.reply_text("Город не найден. Попробуйте еще раз.")
         return
 
     if len(suggestions) == 1:
-        # Если есть только одна подсказка, автоматически переходим к вводу улицы
         state['city'] = suggestions[0]['value']
         state['step'] = 'street'
         await update.message.reply_text(f"Выбран город: {suggestions[0]['text']}. Теперь введите улицу:")
     else:
         keyboard = [
             [InlineKeyboardButton(suggestion['text'], callback_data=f"city_{suggestion['value']}")]
-            for suggestion in suggestions[:10]  # Ограничим количество кнопок до 10
+            for suggestion in suggestions[:10]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text("Выберите город из списка:", reply_markup=reply_markup)
@@ -128,25 +123,25 @@ async def process_street(update: Update, context: ContextTypes.DEFAULT_TYPE, str
     state = conversation_state[user_id]
     page = state["page"]
 
+    if len(street_query) < 3:
+        await update.message.reply_text("Введите не менее 3 символов для названия улицы.")
+        return
+
     street_input_selector = 'input.form__input[name="street"]'
     suggestions = await interact_with_autocomplete(page, street_query, street_input_selector, '#streetautocomplete-list', min_length=3)
 
     if not suggestions:
-        if len(street_query) >= 3:
-            await update.message.reply_text("Улица не найдена. Попробуйте еще раз.")
-        else:
-            await update.message.reply_text("Введите не менее 3 символов для поиска улицы.")
+        await update.message.reply_text("Улица не найдена. Попробуйте еще раз.")
         return
 
     if len(suggestions) == 1:
-        # Если есть только одна подсказка, автоматически переходим к вводу номера дома
         state['street'] = suggestions[0]['value']
         state['step'] = 'house'
         await update.message.reply_text(f"Выбрана улица: {suggestions[0]['text']}. Теперь введите номер дома:")
     else:
         keyboard = [
             [InlineKeyboardButton(suggestion['text'], callback_data=f"street_{suggestion['value']}")]
-            for suggestion in suggestions[:10]  # Ограничим количество кнопок до 10
+            for suggestion in suggestions[:10]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text("Выберите улицу из списка:", reply_markup=reply_markup)
@@ -157,33 +152,24 @@ async def process_house(update: Update, context: ContextTypes.DEFAULT_TYPE, hous
     page = state["page"]
 
     house_input_selector = 'input#house_num'
-
-    try:
-        suggestions = await interact_with_autocomplete(page, house_query, house_input_selector, '#house_numautocomplete-list', min_length=1)
-    except PlaywrightTimeoutError:
-        await update.message.reply_text("Номер дома не найден. Попробуйте еще раз.")
-        return
-
+    suggestions = await interact_with_autocomplete(page, house_query, house_input_selector, '#house_numautocomplete-list', min_length=1)
+    
     if not suggestions:
         await update.message.reply_text("Номер дома не найден. Попробуйте еще раз.")
         return
 
     if len(suggestions) == 1:
-        # Если есть только одна подсказка, выбираем ее автоматически и завершаем процесс
         state['house'] = suggestions[0]['value']
-        await page.click(f"{house_input_selector}")
-        await page.keyboard.press('Enter')  # Нажмем Enter для подтверждения выбора
         outage_info = await get_outage_info(page)
         address = f"{state.get('city', '')}, {state.get('street', '')}, {state.get('house', '')}"
         await update.message.reply_text(f"По адресу {address}:\n{outage_info}")
-        # Закрываем браузер и очищаем состояние
         await state["browser"].close()
         await state["playwright"].stop()
         del conversation_state[user_id]
     else:
         keyboard = [
             [InlineKeyboardButton(suggestion['text'], callback_data=f"house_{suggestion['value']}")]
-            for suggestion in suggestions[:10]  # Ограничим количество кнопок до 10
+            for suggestion in suggestions[:10]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text("Выберите номер дома из списка:", reply_markup=reply_markup)
@@ -199,8 +185,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if query.data.startswith("city_"):
         city_value = query.data[5:]
         await page.fill('input#city', city_value)
-        await page.click('input#city')  # Добавим клик по полю ввода
-        await page.keyboard.press('Enter')  # Нажмем Enter для подтверждения выбора
+        await page.click('input#city')
+        await page.keyboard.press('Enter')
         state['city'] = city_value
         state['step'] = 'street'
         await query.edit_message_text(f"Выбран город: {city_value}. Теперь введите улицу:")
@@ -208,8 +194,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         street_value = query.data[7:]
         street_input_selector = 'input.form__input[name="street"]'
         await page.fill(street_input_selector, street_value)
-        await page.click(street_input_selector)  # Добавим клик по полю ввода
-        await page.keyboard.press('Enter')  # Нажмем Enter для подтверждения выбора
+        await page.click(street_input_selector)
+        await page.keyboard.press('Enter')
         state['street'] = street_value
         state['step'] = 'house'
         await query.edit_message_text(f"Выбрана улица: {street_value}. Теперь введите номер дома:")
@@ -217,18 +203,18 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         house_value = query.data[6:]
         house_input_selector = 'input#house_num'
         await page.fill(house_input_selector, house_value)
-        await page.click(house_input_selector)  # Добавим клик по полю ввода
-        await page.keyboard.press('Enter')  # Нажмем Enter для подтверждения выбора
+        await page.click(house_input_selector)
+        await page.keyboard.press('Enter')
         state['house'] = house_value
         outage_info = await get_outage_info(page)
         address = f"{state.get('city', '')}, {state.get('street', '')}, {state.get('house', '')}"
         await query.edit_message_text(f"По адресу {address}:\n{outage_info}")
-        # Закрываем браузер и очищаем состояние
         await state["browser"].close()
         await state["playwright"].stop()
         del conversation_state[user_id]
 
 def main() -> None:
+    port = int(os.environ.get('PORT', '8443'))
     application = Application.builder().token(TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
@@ -236,7 +222,7 @@ def main() -> None:
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(CallbackQueryHandler(button_callback))
 
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    application.run_polling()
 
 if __name__ == "__main__":
     main()
