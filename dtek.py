@@ -17,7 +17,7 @@ load_dotenv()
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 
 # Путь к ChromeDriver
-chrome_driver_path = "/app/chromedriver/chromedriver"  # Замените на путь, который у вас будет на Render
+chrome_driver_path = "/usr/local/bin/chromedriver"  # Убедитесь, что этот путь корректен для вашей среды
 
 # Этапы для ConversationHandler
 CITY, STREET, HOUSE_NUM = range(3)
