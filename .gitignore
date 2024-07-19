@@ -3,3 +3,4 @@
 package-lock.json
 server copy.js
 app.config
+/__pycache__
