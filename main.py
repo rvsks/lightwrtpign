@@ -1,10 +1,9 @@
 import os
+import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
-import asyncio
 from playwright.async_api import async_playwright
 from dotenv import load_dotenv
-from flask import Flask
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -14,12 +13,6 @@ TOKEN = os.getenv("TELEGRAM_TOKEN")
 
 # Инициализация состояния разговора
 conversation_state = {}
-
-app = Flask(__name__)
-
-@app.route('/')
-def index():
-    return 'Телеграм-бот работает'
 
 async def wait_for_element(page, selector, timeout=60000):
     try:
@@ -231,9 +224,7 @@ def main() -> None:
 
     # Запуск приложения Telegram бота
     asyncio.run(application.run_polling())
-
-    # Запуск Flask приложения
-    app.run(host='0.0.0.0', port=port)
+    print(f"Telegram bot running on port {port}")
 
 if __name__ == "__main__":
     main()
