@@ -1,9 +1,10 @@
 services:
   - type: web
     name: my-telegram-bot
-    env: python
+    env: docker
     buildCommand: |
       pip install -r requirements.txt
       pip install playwright
       playwright install
     startCommand: python main.py
+    port: 5000

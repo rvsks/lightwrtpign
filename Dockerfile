@@ -1,13 +1,20 @@
 # Используйте официальный образ Python как базовый образ
-FROM python:3.11
+FROM python:3.11-slim
 
-# Установите рабочий каталог
+# Установите необходимые библиотеки
+RUN apt-get update && apt-get install -y \
+    libicu-dev \
+    libevent-dev \
+    libjpeg-dev \
+    libenchant-dev \
+    libsecret-1-dev \
+    libffi-dev \
+    libgles2-mesa-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Установите зависимости Python
 WORKDIR /app
-
-# Скопируйте файл с зависимостями
 COPY requirements.txt requirements.txt
-
-# Установите зависимости
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Установите Playwright и его браузеры
