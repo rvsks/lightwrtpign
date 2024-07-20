@@ -1,12 +1,9 @@
-import asyncio
-from flask import Flask
-import threading
 import os
+import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 from playwright.async_api import async_playwright
 from dotenv import load_dotenv
-
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -216,15 +213,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await state["playwright"].stop()
         del conversation_state[user_id]
 
-# Flask app для поддержания веб-сервера
-app = Flask(__name__)
-
-@app.route('/')
-def index():
-    return "Telegram bot is running!"
-
 def main() -> None:
-    port = int(os.environ.get('PORT', 8443))
     application = Application.builder().token(TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
@@ -232,14 +221,9 @@ def main() -> None:
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(CallbackQueryHandler(button_callback))
 
-    # Запуск бота в отдельном потоке
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.create_task(application.run_polling())
-
-    # Запуск Flask-сервера
-    thread = threading.Thread(target=lambda: app.run(host='0.0.0.0', port=port))
-    thread.start()
+    # Запуск приложения Telegram бота
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    print("Telegram bot is running")
 
 if __name__ == "__main__":
     main()
