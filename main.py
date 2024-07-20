@@ -4,6 +4,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 from playwright.async_api import async_playwright
 from dotenv import load_dotenv
+from flask import Flask
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -213,6 +214,13 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await state["playwright"].stop()
         del conversation_state[user_id]
 
+# Flask app для поддержания веб-сервера
+app = Flask(__name__)
+
+@app.route('/')
+def index():
+    return "Telegram bot is running!"
+
 def main() -> None:
     port = int(os.environ.get('PORT', '8443'))
     application = Application.builder().token(TOKEN).build()
@@ -222,9 +230,12 @@ def main() -> None:
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(CallbackQueryHandler(button_callback))
 
-    # Запуск приложения Telegram бота
-    asyncio.run(application.run_polling())
-    print(f"Telegram bot running on port {port}")
+    # Запуск бота в отдельном потоке
+    loop = asyncio.get_event_loop()
+    loop.create_task(application.run_polling())
+
+    # Запуск Flask-сервера
+    app.run(host='0.0.0.0', port=port)
 
 if __name__ == "__main__":
     main()
